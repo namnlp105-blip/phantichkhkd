@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 from google import genai
 from google.genai.errors import APIError
-from google.genai import types # Thêm import types cho cấu hình
+from google.genai import types 
 
 # --- Cấu hình Trang Streamlit ---
 st.set_page_config(
@@ -73,12 +73,14 @@ def get_ai_analysis(data_for_ai, api_key):
     except Exception as e:
         return f"Đã xảy ra lỗi không xác định: {e}"
 
-# --- Hàm khởi tạo hoặc lấy Chat Session (Đã Sửa Lỗi System Instruction) ---
+# --- Hàm khởi tạo hoặc lấy Chat Session (ĐÃ SỬA LỖI CLIENT CLOSED) ---
 def get_chat_session(api_key, system_prompt):
     """Khởi tạo hoặc lấy chat session từ st.session_state."""
+    # CHỈ KHỞI TẠO NẾU CHƯA CÓ SESSION
     if "chat_client" not in st.session_state:
         try:
-            client = genai.Client(api_key=api_key)
+            # Luôn tạo một client mới khi khởi tạo chat session lần đầu tiên
+            client = genai.Client(api_key=api_key) 
             
             # Khởi tạo model config với System Instruction
             config = types.GenerateContentConfig(
@@ -88,14 +90,16 @@ def get_chat_session(api_key, system_prompt):
             # Truyền config vào khi tạo chat
             st.session_state.chat_client = client.chats.create(
                 model='gemini-2.5-flash',
-                config=config # SỬA LỖI: Truyền System Prompt thông qua config
+                config=config 
             )
-            # Khởi tạo một tin nhắn welcome để người dùng biết AI đã sẵn sàng
+            # Khởi tạo tin nhắn welcome (chỉ chạy lần đầu)
             st.session_state.messages.append({"role": "assistant", "content": "Chào bạn! Tôi đã phân tích sơ bộ dữ liệu. Hãy hỏi tôi về tăng trưởng, cơ cấu tài sản, hoặc khả năng thanh toán."})
 
         except Exception as e:
-            st.error(f"Lỗi khởi tạo Chat: {e}")
+            st.error(f"Lỗi khởi tạo Chat: Vui lòng kiểm tra API Key. Chi tiết: {e}")
             return None
+            
+    # TRẢ VỀ SESSION ĐÃ LƯU DÙ NÓ CÓ THỂ ĐÃ BỊ LỖI
     return st.session_state.chat_client
 
 # --------------------------------------------------------------------------------------
@@ -130,7 +134,7 @@ if uploaded_file is not None:
 
             if df_processed is not None:
                 
-                # --- Chức năng 2 & 3: Hiển thị Kết quả ---
+                # ... (Các phần hiển thị kết quả và chỉ số không đổi) ...
                 st.subheader("2. Tốc độ Tăng trưởng & 3. Tỷ trọng Cơ cấu Tài sản")
                 st.dataframe(df_processed.style.format({
                     'Năm trước': '{:,.0f}',
@@ -140,14 +144,12 @@ if uploaded_file is not None:
                     'Tỷ trọng Năm sau (%)': '{:.2f}%'
                 }), use_container_width=True)
                 
-                # --- Chức năng 4: Tính Chỉ số Tài chính ---
                 st.subheader("4. Các Chỉ số Tài chính Cơ bản")
                 
                 thanh_toan_hien_hanh_N = "N/A"
                 thanh_toan_hien_hanh_N_1 = "N/A"
                 
                 try:
-                    # Lấy Tài sản ngắn hạn và Nợ ngắn hạn
                     tsnh_n_row = df_processed[df_processed['Chỉ tiêu'].str.contains('TÀI SẢN NGẮN HẠN', case=False, na=False)]
                     no_ngan_han_row = df_processed[df_processed['Chỉ tiêu'].str.contains('NỢ NGẮN HẠN', case=False, na=False)]
                     
@@ -159,11 +161,10 @@ if uploaded_file is not None:
                     no_ngan_han_N = no_ngan_han_row['Năm sau'].iloc[0]  
                     no_ngan_han_N_1 = no_ngan_han_row['Năm trước'].iloc[0]
 
-                    # Tính toán (Xử lý lỗi chia cho 0)
                     if no_ngan_han_N != 0:
                         thanh_toan_hien_hanh_N = tsnh_n / no_ngan_han_N
                     if no_ngan_han_N_1 != 0:
-                        thanh_toan_hien_hanh_N_1 = tsnh_n_1 / no_ngan_han_N_1
+                        thanh_toan_hien_hanh_N_1 = tsnh_n_1 / no_ngan_han_han_N_1
                     
                     col1, col2 = st.columns(2)
                     with col1:
@@ -185,7 +186,6 @@ if uploaded_file is not None:
                     thanh_toan_hien_hanh_N = "N/A"
                     thanh_toan_hien_hanh_N_1 = "N/A"
                     
-                # Chuẩn bị dữ liệu cho AI (cả nhận xét tĩnh và chat)
                 data_for_ai_markdown = pd.DataFrame({
                     'Chỉ tiêu': [
                         'Toàn bộ Bảng phân tích (dữ liệu thô)', 
@@ -241,21 +241,29 @@ if uploaded_file is not None:
                         # Gửi tin nhắn và chờ phản hồi từ Gemini
                         with st.chat_message("assistant"):
                             with st.spinner("Đang tìm kiếm và phân tích..."):
-                                # Gửi prompt đến chat session
-                                response = chat_session.send_message(prompt)
-                                st.markdown(response.text)
-                                # Thêm tin nhắn AI vào lịch sử
-                                st.session_state.messages.append({"role": "assistant", "content": response.text})
+                                try:
+                                    # Gửi prompt đến chat session
+                                    response = chat_session.send_message(prompt)
+                                    st.markdown(response.text)
+                                    # Thêm tin nhắn AI vào lịch sử
+                                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                                except Exception as e:
+                                    # BẮT LỖI GỬI TIN NHẮN (LỖI CLIENT CLOSED)
+                                    error_msg = f"Lỗi gửi tin nhắn: Vui lòng refresh trang và thử lại. Chi tiết lỗi: {e}"
+                                    st.error(error_msg)
+                                    st.session_state.messages.append({"role": "assistant", "content": error_msg})
 
+
+        # Cần phải bắt lỗi tổng quát ở đây để đảm bảo ứng dụng không crash hoàn toàn
         except ValueError as ve:
             st.error(f"Lỗi cấu trúc dữ liệu: {ve}")
-            if "chat_client" in st.session_state:
-                del st.session_state["chat_client"] # Xóa session cũ nếu dữ liệu lỗi
-                st.session_state["messages"] = []
+            # KHÔNG XÓA CHAT CLIENT TRONG KHỐI NÀY: Giữ lại nếu lỗi chỉ do cấu trúc file mới
         except Exception as e:
+            # XÓA CHAT CLIENT: Nếu có lỗi chung, xóa client để đảm bảo nó được khởi tạo lại
             st.error(f"Có lỗi xảy ra khi đọc hoặc xử lý file: {e}. Vui lòng kiểm tra định dạng file.")
             if "chat_client" in st.session_state:
-                del st.session_state["chat_client"]
+                 # Đảm bảo xóa client để buộc nó khởi tạo lại trong lần rerun sau
+                del st.session_state["chat_client"] 
                 st.session_state["messages"] = []
 
 else:
