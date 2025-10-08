@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 from google import genai
 from google.genai.errors import APIError
+from google.genai import types # Thêm import types cho cấu hình
 
 # --- Cấu hình Trang Streamlit ---
 st.set_page_config(
@@ -24,13 +25,11 @@ def process_financial_data(df):
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
     # 1. Tính Tốc độ Tăng trưởng
-    # Dùng .replace(0, 1e-9) cho Series Pandas để tránh lỗi chia cho 0
     df['Tốc độ tăng trưởng (%)'] = (
         (df['Năm sau'] - df['Năm trước']) / df['Năm trước'].replace(0, 1e-9)
     ) * 100
 
     # 2. Tính Tỷ trọng theo Tổng Tài sản
-    # Lọc chỉ tiêu "TỔNG CỘNG TÀI SẢN"
     tong_tai_san_row = df[df['Chỉ tiêu'].str.contains('TỔNG CỘNG TÀI SẢN', case=False, na=False)]
     
     if tong_tai_san_row.empty:
@@ -74,16 +73,26 @@ def get_ai_analysis(data_for_ai, api_key):
     except Exception as e:
         return f"Đã xảy ra lỗi không xác định: {e}"
 
-# --- Hàm khởi tạo hoặc lấy Chat Session ---
+# --- Hàm khởi tạo hoặc lấy Chat Session (Đã Sửa Lỗi System Instruction) ---
 def get_chat_session(api_key, system_prompt):
     """Khởi tạo hoặc lấy chat session từ st.session_state."""
     if "chat_client" not in st.session_state:
         try:
             client = genai.Client(api_key=api_key)
-            st.session_state.chat_client = client.chats.create(
-                model='gemini-2.5-flash',
+            
+            # Khởi tạo model config với System Instruction
+            config = types.GenerateContentConfig(
                 system_instruction=system_prompt
             )
+            
+            # Truyền config vào khi tạo chat
+            st.session_state.chat_client = client.chats.create(
+                model='gemini-2.5-flash',
+                config=config # SỬA LỖI: Truyền System Prompt thông qua config
+            )
+            # Khởi tạo một tin nhắn welcome để người dùng biết AI đã sẵn sàng
+            st.session_state.messages.append({"role": "assistant", "content": "Chào bạn! Tôi đã phân tích sơ bộ dữ liệu. Hãy hỏi tôi về tăng trưởng, cơ cấu tài sản, hoặc khả năng thanh toán."})
+
         except Exception as e:
             st.error(f"Lỗi khởi tạo Chat: {e}")
             return None
@@ -138,7 +147,7 @@ if uploaded_file is not None:
                 thanh_toan_hien_hanh_N_1 = "N/A"
                 
                 try:
-                    # Lấy Tài sản ngắn hạn
+                    # Lấy Tài sản ngắn hạn và Nợ ngắn hạn
                     tsnh_n_row = df_processed[df_processed['Chỉ tiêu'].str.contains('TÀI SẢN NGẮN HẠN', case=False, na=False)]
                     no_ngan_han_row = df_processed[df_processed['Chỉ tiêu'].str.contains('NỢ NGẮN HẠN', case=False, na=False)]
                     
@@ -177,7 +186,6 @@ if uploaded_file is not None:
                     thanh_toan_hien_hanh_N_1 = "N/A"
                     
                 # Chuẩn bị dữ liệu cho AI (cả nhận xét tĩnh và chat)
-                # PHẦN SỬA LỖI: Đảm bảo cú pháp f-string trong to_markdown là chính xác.
                 data_for_ai_markdown = pd.DataFrame({
                     'Chỉ tiêu': [
                         'Toàn bộ Bảng phân tích (dữ liệu thô)', 
