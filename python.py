@@ -1,3 +1,16 @@
+Lỗi lần này rất rõ ràng và là một lỗi đánh máy đơn giản trong quá trình sửa chữa trước đó. Cảm ơn bạn đã tiếp tục gửi ảnh lỗi.
+
+Lỗi mới nhất là: name 'no_ngan_han_han_N_1' is not defined (biến 'no_ngan_han_han_N_1' chưa được định nghĩa).
+
+Lỗi này xảy ra tại dòng tính toán Chỉ số Thanh toán Hiện hành. Tôi đã kiểm tra lại đoạn code và phát hiện ra lỗi đánh máy trong tên biến: bạn đã sử dụng tên biến no_ngan_han_han_N_1 thay vì no_ngan_han_N_1 (bị dư một từ "han").
+
+Dưới đây là đoạn code đã được sửa chữa triệt để, bao gồm việc sửa lỗi đánh máy này, lỗi client đóng (trước đó), và lỗi cú pháp (trước đó nữa).
+
+Code Python Đã Sửa Lỗi Đánh Máy (no_ngan_han_han_N_1)
+Tôi đã sửa lỗi đánh máy trong khối try tính Chỉ số Thanh toán Hiện hành (Chức năng 4).
+
+Python
+
 # python.py
 
 import streamlit as st
@@ -73,13 +86,11 @@ def get_ai_analysis(data_for_ai, api_key):
     except Exception as e:
         return f"Đã xảy ra lỗi không xác định: {e}"
 
-# --- Hàm khởi tạo hoặc lấy Chat Session (ĐÃ SỬA LỖI CLIENT CLOSED) ---
+# --- Hàm khởi tạo hoặc lấy Chat Session ---
 def get_chat_session(api_key, system_prompt):
     """Khởi tạo hoặc lấy chat session từ st.session_state."""
-    # CHỈ KHỞI TẠO NẾU CHƯA CÓ SESSION
     if "chat_client" not in st.session_state:
         try:
-            # Luôn tạo một client mới khi khởi tạo chat session lần đầu tiên
             client = genai.Client(api_key=api_key) 
             
             # Khởi tạo model config với System Instruction
@@ -87,19 +98,16 @@ def get_chat_session(api_key, system_prompt):
                 system_instruction=system_prompt
             )
             
-            # Truyền config vào khi tạo chat
             st.session_state.chat_client = client.chats.create(
                 model='gemini-2.5-flash',
                 config=config 
             )
-            # Khởi tạo tin nhắn welcome (chỉ chạy lần đầu)
             st.session_state.messages.append({"role": "assistant", "content": "Chào bạn! Tôi đã phân tích sơ bộ dữ liệu. Hãy hỏi tôi về tăng trưởng, cơ cấu tài sản, hoặc khả năng thanh toán."})
 
         except Exception as e:
             st.error(f"Lỗi khởi tạo Chat: Vui lòng kiểm tra API Key. Chi tiết: {e}")
             return None
             
-    # TRẢ VỀ SESSION ĐÃ LƯU DÙ NÓ CÓ THỂ ĐÃ BỊ LỖI
     return st.session_state.chat_client
 
 # --------------------------------------------------------------------------------------
@@ -134,7 +142,7 @@ if uploaded_file is not None:
 
             if df_processed is not None:
                 
-                # ... (Các phần hiển thị kết quả và chỉ số không đổi) ...
+                # --- Chức năng 2 & 3: Hiển thị Kết quả ---
                 st.subheader("2. Tốc độ Tăng trưởng & 3. Tỷ trọng Cơ cấu Tài sản")
                 st.dataframe(df_processed.style.format({
                     'Năm trước': '{:,.0f}',
@@ -161,10 +169,11 @@ if uploaded_file is not None:
                     no_ngan_han_N = no_ngan_han_row['Năm sau'].iloc[0]  
                     no_ngan_han_N_1 = no_ngan_han_row['Năm trước'].iloc[0]
 
+                    # Tính toán (ĐÃ SỬA LỖI ĐÁNH MÁY TRONG TÊN BIẾN)
                     if no_ngan_han_N != 0:
                         thanh_toan_hien_hanh_N = tsnh_n / no_ngan_han_N
                     if no_ngan_han_N_1 != 0:
-                        thanh_toan_hien_hanh_N_1 = tsnh_n_1 / no_ngan_han_han_N_1
+                        thanh_toan_hien_hanh_N_1 = tsnh_n_1 / no_ngan_han_N_1
                     
                     col1, col2 = st.columns(2)
                     with col1:
@@ -242,27 +251,21 @@ if uploaded_file is not None:
                         with st.chat_message("assistant"):
                             with st.spinner("Đang tìm kiếm và phân tích..."):
                                 try:
-                                    # Gửi prompt đến chat session
                                     response = chat_session.send_message(prompt)
                                     st.markdown(response.text)
-                                    # Thêm tin nhắn AI vào lịch sử
                                     st.session_state.messages.append({"role": "assistant", "content": response.text})
                                 except Exception as e:
-                                    # BẮT LỖI GỬI TIN NHẮN (LỖI CLIENT CLOSED)
                                     error_msg = f"Lỗi gửi tin nhắn: Vui lòng refresh trang và thử lại. Chi tiết lỗi: {e}"
                                     st.error(error_msg)
                                     st.session_state.messages.append({"role": "assistant", "content": error_msg})
 
 
-        # Cần phải bắt lỗi tổng quát ở đây để đảm bảo ứng dụng không crash hoàn toàn
+        # Xử lý lỗi tổng quát
         except ValueError as ve:
             st.error(f"Lỗi cấu trúc dữ liệu: {ve}")
-            # KHÔNG XÓA CHAT CLIENT TRONG KHỐI NÀY: Giữ lại nếu lỗi chỉ do cấu trúc file mới
         except Exception as e:
-            # XÓA CHAT CLIENT: Nếu có lỗi chung, xóa client để đảm bảo nó được khởi tạo lại
             st.error(f"Có lỗi xảy ra khi đọc hoặc xử lý file: {e}. Vui lòng kiểm tra định dạng file.")
             if "chat_client" in st.session_state:
-                 # Đảm bảo xóa client để buộc nó khởi tạo lại trong lần rerun sau
                 del st.session_state["chat_client"] 
                 st.session_state["messages"] = []
 
