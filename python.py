@@ -124,4 +124,135 @@ if uploaded_file is not None:
                 # --- Chức năng 2 & 3: Hiển thị Kết quả ---
                 st.subheader("2. Tốc độ Tăng trưởng & 3. Tỷ trọng Cơ cấu Tài sản")
                 st.dataframe(df_processed.style.format({
-                    'Năm trước': '{
+                    'Năm trước': '{:,.0f}',
+                    'Năm sau': '{:,.0f}',
+                    'Tốc độ tăng trưởng (%)': '{:.2f}%',
+                    'Tỷ trọng Năm trước (%)': '{:.2f}%',
+                    'Tỷ trọng Năm sau (%)': '{:.2f}%'
+                }), use_container_width=True)
+                
+                # --- Chức năng 4: Tính Chỉ số Tài chính ---
+                st.subheader("4. Các Chỉ số Tài chính Cơ bản")
+                
+                thanh_toan_hien_hanh_N = "N/A"
+                thanh_toan_hien_hanh_N_1 = "N/A"
+                
+                try:
+                    # Lấy Tài sản ngắn hạn
+                    tsnh_n_row = df_processed[df_processed['Chỉ tiêu'].str.contains('TÀI SẢN NGẮN HẠN', case=False, na=False)]
+                    no_ngan_han_row = df_processed[df_processed['Chỉ tiêu'].str.contains('NỢ NGẮN HẠN', case=False, na=False)]
+                    
+                    if tsnh_n_row.empty or no_ngan_han_row.empty:
+                        raise IndexError("Thiếu dữ liệu để tính chỉ số Thanh toán Hiện hành.")
+
+                    tsnh_n = tsnh_n_row['Năm sau'].iloc[0]
+                    tsnh_n_1 = tsnh_n_row['Năm trước'].iloc[0]
+                    no_ngan_han_N = no_ngan_han_row['Năm sau'].iloc[0]  
+                    no_ngan_han_N_1 = no_ngan_han_row['Năm trước'].iloc[0]
+
+                    # Tính toán (Xử lý lỗi chia cho 0)
+                    if no_ngan_han_N != 0:
+                        thanh_toan_hien_hanh_N = tsnh_n / no_ngan_han_N
+                    if no_ngan_han_N_1 != 0:
+                        thanh_toan_hien_hanh_N_1 = tsnh_n_1 / no_ngan_han_N_1
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric(
+                            label="Chỉ số Thanh toán Hiện hành (Năm trước)",
+                            value=f"{thanh_toan_hien_hanh_N_1:.2f} lần" if isinstance(thanh_toan_hien_hanh_N_1, float) else "N/A"
+                        )
+                    with col2:
+                        st.metric(
+                            label="Chỉ số Thanh toán Hiện hành (Năm sau)",
+                            value=f"{thanh_toan_hien_hanh_N:.2f} lần" if isinstance(thanh_toan_hien_hanh_N, float) else "N/A",
+                            delta=f"{thanh_toan_hien_hanh_N - thanh_toan_hien_hanh_N_1:.2f}" if isinstance(thanh_toan_hien_hanh_N, float) and isinstance(thanh_toan_hien_hanh_N_1, float) else None
+                        )
+                        
+                except IndexError as ie:
+                    st.warning(f"Thiếu chỉ tiêu: {ie}")
+                except ZeroDivisionError:
+                    st.warning("Mẫu số (Nợ Ngắn Hạn) bằng 0, không thể tính chỉ số Thanh toán Hiện hành.")
+                    thanh_toan_hien_hanh_N = "N/A"
+                    thanh_toan_hien_hanh_N_1 = "N/A"
+                    
+                # Chuẩn bị dữ liệu cho AI (cả nhận xét tĩnh và chat)
+                # PHẦN SỬA LỖI: Đảm bảo cú pháp f-string trong to_markdown là chính xác.
+                data_for_ai_markdown = pd.DataFrame({
+                    'Chỉ tiêu': [
+                        'Toàn bộ Bảng phân tích (dữ liệu thô)', 
+                        'Thanh toán hiện hành (N-1)', 
+                        'Thanh toán hiện hành (N)'
+                    ],
+                    'Giá trị': [
+                        df_processed.to_markdown(index=False),
+                        (f"{thanh_toan_hien_hanh_N_1}" if isinstance(thanh_toan_hien_hanh_N_1, float) else "N/A"), 
+                        (f"{thanh_toan_hien_hanh_N}" if isinstance(thanh_toan_hien_hanh_N, float) else "N/A")
+                    ]
+                }).to_markdown(index=False)
+                
+                # --- Chức năng 5: Nhận xét AI (Statis Analysis) ---
+                st.subheader("5. Nhận xét Tình hình Tài chính (AI Tĩnh)")
+                
+                if st.button("Yêu cầu AI Phân tích"):
+                    with st.spinner('Đang gửi dữ liệu và chờ Gemini phân tích...'):
+                        ai_result = get_ai_analysis(data_for_ai_markdown, api_key)
+                        st.markdown("**Kết quả Phân tích từ Gemini AI:**")
+                        st.info(ai_result)
+
+                # --------------------------------------------------------------------------------------
+                # --- CHỨC NĂNG 6: KHUNG CHAT HỎI ĐÁP VỚI GEMINI ---
+                # --------------------------------------------------------------------------------------
+                st.subheader("6. Chat Hỏi đáp chuyên sâu với Gemini AI 💬")
+                
+                # Định nghĩa System Prompt để giữ ngữ cảnh chat
+                SYSTEM_PROMPT = f"""
+                Bạn là một trợ lý phân tích tài chính chuyên nghiệp và lịch sự.
+                Nhiệm vụ của bạn là trả lời các câu hỏi dựa trên dữ liệu Báo cáo Tài chính sau.
+                Bạn phải sử dụng các con số và chỉ số trong dữ liệu để hỗ trợ câu trả lời của mình.
+                Dữ liệu tài chính nền tảng:
+                {data_for_ai_markdown}
+                """
+                
+                # Khởi tạo hoặc lấy chat session
+                chat_session = get_chat_session(api_key, SYSTEM_PROMPT)
+
+                if chat_session:
+                    # Hiển thị lịch sử chat
+                    for message in st.session_state.messages:
+                        with st.chat_message(message["role"]):
+                            st.markdown(message["content"])
+
+                    # Xử lý input từ người dùng
+                    if prompt := st.chat_input("Hỏi về Tăng trưởng, Cơ cấu, hoặc Thanh toán..."):
+                        # Thêm tin nhắn người dùng vào lịch sử
+                        st.session_state.messages.append({"role": "user", "content": prompt})
+                        with st.chat_message("user"):
+                            st.markdown(prompt)
+
+                        # Gửi tin nhắn và chờ phản hồi từ Gemini
+                        with st.chat_message("assistant"):
+                            with st.spinner("Đang tìm kiếm và phân tích..."):
+                                # Gửi prompt đến chat session
+                                response = chat_session.send_message(prompt)
+                                st.markdown(response.text)
+                                # Thêm tin nhắn AI vào lịch sử
+                                st.session_state.messages.append({"role": "assistant", "content": response.text})
+
+        except ValueError as ve:
+            st.error(f"Lỗi cấu trúc dữ liệu: {ve}")
+            if "chat_client" in st.session_state:
+                del st.session_state["chat_client"] # Xóa session cũ nếu dữ liệu lỗi
+                st.session_state["messages"] = []
+        except Exception as e:
+            st.error(f"Có lỗi xảy ra khi đọc hoặc xử lý file: {e}. Vui lòng kiểm tra định dạng file.")
+            if "chat_client" in st.session_state:
+                del st.session_state["chat_client"]
+                st.session_state["messages"] = []
+
+else:
+    # Reset chat session khi không có file
+    if "chat_client" in st.session_state:
+        del st.session_state["chat_client"]
+        st.session_state["messages"] = []
+    st.info("Vui lòng tải lên file Excel để bắt đầu phân tích.")
